@@ -1,53 +1,70 @@
-# Supabase schema (draft for review, 30 Oct 2026)
+# Supabase schema (live, 30 Oct 2026)
 
-## Rules for every table
-- `id text` primary key (keeps the app's existing ids so the backup imports as-is)
-- `user_id uuid` → auth.users, row-level security: `user_id = auth.uid()`
-- `created_at`, `updated_at` (newest wins when syncing), `deleted_at` (soft delete, so offline devices don't resurrect deleted rows)
-- Photos: private Storage bucket `photos/{user_id}/{id}.jpg`; tables store `photo_path`
+Project **life-book** · ref `mbqagxtljzgfbhvaetda` · region eu-central-1 (Frankfurt) · Free plan.
+SQL: `supabase/migrations/20261030090000_life_book_schema.sql` (applied).
+
+## Design
+- **One table per app collection.** Lists the app saves inside a record (recipe ingredients, a person's gifts/dates, settings bills/incomes/budgets) stay inside it as `jsonb`. runtime.js maps one app doc ⇄ one row.
+- Every table has:
+  | Column | Use |
+  |---|---|
+  | `user_id` uuid | defaults to `auth.uid()`; RLS: you only see/write your own rows |
+  | `id` text | the app's existing id (backup imports as-is). PK = (user_id, id) |
+  | typed columns | the stable fields (below), snake_case of the app key |
+  | `extra` jsonb | every other app field, so nothing is lost |
+  | `created_at` | app `createdAt` (ms → timestamptz) |
+  | `updated_at` | **device time of the edit**. A trigger ignores any write older than the row (offline device can't overwrite newer data) |
+  | `deleted_at` | soft delete. App "delete" sets this, "undo" clears it |
+  | `synced_at` | **server time** set by trigger. Pull cursor: `where synced_at > last_pull` |
+- Storage: private bucket `photos`, path `{user_id}/{asset id}`, 5 MB max, jpeg/png/webp. Columns `photo`/`orig` hold the asset id.
 
 ## Tables
-| Group | Table | Columns |
+| Table | App collection | Typed columns (rest → `extra`) |
 |---|---|---|
-| Settings | `settings` (PK user_id) | rate, elec_rate, water_target, rope_target, vitd_days, vitd_dose, sleep_goal, height_cm, goal_kg, journey_start, journey_low, pray_start, no_spend, debt_sort, prefs jsonb |
-| Money | `entries` | amount, category, note, date, orig_amount, orig_currency, debt_id?, bill_id?, person_id? |
-| | `debts` | name, currency, total, paid_before, sort_order |
-| | `bills` | name, amount, category, due_day |
-| | `budgets` | category, amount · unique(user, category) |
-| | `incomes` | (fields to confirm from code) |
-| | `income_log` | date, for_month, cycle |
-| | `wishes` | category, name, type, color, price, currency, where_from, status, decided_at, entry_id? |
-| Health | `day_logs` (PK user_id+date) | water, vit_d, folic, rope, bed, wake, mood, flow, symptoms[], note, prayers jsonb, tasbih jsonb, habits jsonb |
-| | `weights` | date (unique per user), kg |
-| | `food_logs` | date, meal, name, on_plan, kcal |
-| | `cycles` | start_date, end_date |
-| Home | `products` | name, brand, size, notes, photo_path, status |
-| | `prices` | item, unit, price_per_unit, date, product_id? |
-| | `recipes` | title, servings, time, plan, for_him, steps[], tips[], photo_path, times_made, last_made |
-| | `recipe_ingredients` | recipe_id, qty, unit, name, product_id?, sort_order |
-| | `closet_items` | name, type, color, fit, clean, plan, orig_path, photo_path, crop jsonb, bright, status |
-| | `people` | name, relation, is_partner, birthday, notes, favs[], wants[], gift_budget |
-| | `person_dates` | person_id, label, date |
-| | `gifts` | person_id, name, price, date, entry_id? |
-| | `date_nights` | date, idea, note, person_id? |
-| | `notes` | text, tag_id?, pinned, url, ai_label, photo_path |
-| | `note_tags` | name, color, sort_order |
+| settings | settings/main | `data` jsonb (whole doc). Only id `main` |
+| debts | debts | name, currency (NIS/USD), total, paid_before, sort_order (`order`) |
+| people | people | name, rel, partner, birthday (text), notes, gift_budget, dates[], favs[], wants[], gifts[] |
+| products | products | name, brand, size, notes, photo, status |
+| entries | entries | amount, cat, note, date, orig_amt, debt_id, bill_id, person_id |
+| wishes | wishes | cat, name, type, color, price, cur, where_from (`where`), added, status (waiting/bought/skipped), decided |
+| food_logs | food | date, meal, name, plan (bool), kcal |
+| weights | weights | date (one live row per day), kg |
+| day_logs | days | date, `data` jsonb (habits, prayers, tasbih, sleep, mood… keys are dynamic) |
+| cycles | cycle | start_date (`start`), end_date (`end`) |
+| prices | prices | item, unit, ppu, date |
+| recipes | recipes | title, servings, time, plan, for_him, ingredients[], steps[], tips[], photo, made, last_made |
+| closet_items | closet | name, type, color, fit, clean, plan, orig, photo, crop, bright, status |
+| date_nights | dates | date, idea, note |
+| notes | notes | text, tag, pinned, url, label, photo |
 
-## Relations
-| From | To | On parent delete |
+## Links
+| From | To | Rule |
 |---|---|---|
-| entries.debt_id | debts | set null (open: or block) |
-| entries.bill_id | bills | set null |
-| entries.person_id | people | set null |
-| wishes.entry_id | entries | set null (new) |
-| prices.product_id | products | set null (new) |
-| recipe_ingredients.recipe_id | recipes | cascade |
-| recipe_ingredients.product_id | products | set null |
-| person_dates.person_id, gifts.person_id | people | cascade |
-| gifts.entry_id | entries | set null (new) |
-| date_nights.person_id | people | set null |
-| notes.tag_id | note_tags | set null |
+| entries.debt_id | debts | FK (same user only). Hard purge → set null |
+| entries.person_id | people | FK (same user only). Hard purge → set null |
+| entries.bill_id | settings.data.bills[].id | no FK (bills live in settings) |
+| recipes.ingredients[].product_id | products | no FK (inside jsonb) |
+| notes.tag | settings.data.noteTags[].id | no FK |
 
-## Open
-- Categories: plain text, or a `categories` table (needed if categories get renamed)?
-- Data source for import: the phone app backup (includes photos as `blobs`).
+## Decisions (30 Oct)
+- Table shape matches the app (Lina chose this over child tables).
+- Categories: **plain text id** (`cat`). Names live in the app's `CATS` list, so renaming a category never touches data. No `categories` table.
+- Debt delete: app soft-deletes, so undo keeps working and payments stay linked. FK only acts on a hard purge (set null).
+- `settings.incomes[]` = {id, name, usd, feePct, flat, count}. `incomeLog[]` = {id, src, name, cur, amt, rate, nis, date, forM?, cycle}.
+
+## Rules for runtime.js (step 3)
+- Numbers: send `''`/undefined as null; on read, drop null keys (app already treats missing as blank).
+- Push parents first: debts, people, products → then entries and the rest (FKs).
+- Always send `updated_at` = edit time on the device.
+
+## Free plan limits (checked 30 Oct)
+| Limit | Value | Risk for Life Book |
+|---|---|---|
+| Inactivity pause | after ~7 days of low activity | Low if used daily. Restore from dashboard within 90 days |
+| Database | 500 MB | Fine (text data) |
+| Storage | 1 GB | ~5,000+ photos at ~200 KB. Keep compressing photos before upload |
+| Egress | 5 GB / month | Fine if the app caches photos locally |
+| Backups | none downloadable on Free | **Keep the in-app JSON backup** |
+
+## Verified (30 Oct)
+RLS isolation (user B can't read, edit, write as, or link to user A's rows), stale-write guard, FK set-null on purge. Security advisor: 0 issues.
