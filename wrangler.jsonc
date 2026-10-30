@@ -1,0 +1,7 @@
+// Cloudflare deploy config for the app site (Worker "lina-app", static files only).
+// Cloudflare builds from GitHub on every push to main and serves the site/ folder.
+{
+  "name": "lina-app",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./site" }
+}
