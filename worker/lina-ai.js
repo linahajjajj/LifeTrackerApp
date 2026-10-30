@@ -1,16 +1,42 @@
 // Lina's app — private Claude helper (Cloudflare Worker "lina-ai"). Keeps the API key off the phone.
-// Secrets: ANTHROPIC_API_KEY, APP_PASS. Variable: ALLOWED_ORIGIN (comma-separated).
+// Secrets: ANTHROPIC_API_KEY, APP_PASS (old phone build only; delete once everyone uses sign-in).
+// Variables: ALLOWED_ORIGIN (comma-separated), ALLOWED_EMAILS (comma-separated; who may use AI when signed in).
+// Sign-in check: the app sends its Supabase login token; the worker asks Supabase who it belongs to.
+const SB_URL = 'https://mbqagxtljzgfbhvaetda.supabase.co';
+const SB_KEY = 'sb_publishable_CWxn6HeXrXnn944L9YiYkw_Crg0Ciia';
+const seen = new Map(); // token -> {email, until}
+async function signedInEmail(req) {
+  const m = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+  const tok = m[1], hit = seen.get(tok);
+  if (hit && hit.until > Date.now()) return hit.email;
+  const r = await fetch(SB_URL + '/auth/v1/user', { headers: { apikey: SB_KEY, authorization: 'Bearer ' + tok } });
+  if (!r.ok) return null;
+  const u = await r.json().catch(() => ({}));
+  const email = String(u.email || '').toLowerCase();
+  if (seen.size > 50) seen.clear();
+  seen.set(tok, { email, until: Date.now() + 5 * 60 * 1000 });
+  return email;
+}
 // Deploy: Cloudflare → Workers → lina-ai → Edit code → paste → Deploy. Never commit the API key.
 export default {
   async fetch(req, env) {
     const origin = req.headers.get('Origin') || '';
     const allowed = (env.ALLOWED_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
     const okOrigin = !allowed.length || allowed.includes(origin);
-    const cors = { 'Access-Control-Allow-Origin': okOrigin ? (origin || '*') : 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, x-app-pass', 'Vary': 'Origin' };
+    const cors = { 'Access-Control-Allow-Origin': okOrigin ? (origin || '*') : 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, x-app-pass, authorization', 'Vary': 'Origin' };
     const out = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { ...cors, 'content-type': 'application/json' } });
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
     if (req.method !== 'POST') return new Response('Lina AI helper is running.', { headers: cors });
-    if (!okOrigin || !env.APP_PASS || req.headers.get('x-app-pass') !== env.APP_PASS) return out({ error: 'not_allowed' }, 401);
+    if (!okOrigin) return out({ error: 'not_allowed' }, 401);
+    const passOk = !!env.APP_PASS && req.headers.get('x-app-pass') === env.APP_PASS;
+    let userOk = false;
+    if (!passOk) {
+      const allowedEmails = (env.ALLOWED_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+      const email = allowedEmails.length ? await signedInEmail(req).catch(() => null) : null;
+      userOk = !!email && allowedEmails.includes(email);
+    }
+    if (!passOk && !userOk) return out({ error: 'not_allowed' }, 401);
     let body; try { body = await req.json(); } catch (e) { return out({ error: 'bad_request' }, 400); }
     const MODELS = { quick: 'claude-haiku-5-5', default: 'claude-sonnet-5-5' };
     const model = MODELS[body.tier] || MODELS.quick;

@@ -1,6 +1,6 @@
 /* Life Book service worker: works offline and serves photos saved on this device.
    Bump VERSION on every release so phones drop the old cached files. */
-const VERSION = 'v36-web-1';
+const VERSION = 'v36-sync-1';
 const SHELL = 'shell-' + VERSION;
 const FONTS = 'fonts-v1';
 const CORE = ['/', '/index.html', '/css/app.css', '/js/runtime.js', '/js/app.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
@@ -13,7 +13,7 @@ function blobFromDB(id) {
     const r = indexedDB.open('lina-life', 1);
     r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('docs')) d.createObjectStore('docs'); if (!d.objectStoreNames.contains('blobs')) d.createObjectStore('blobs'); };
     r.onerror = () => rej(r.error);
-    r.onsuccess = () => { const g = r.result.transaction('blobs').objectStore('blobs').get(id); g.onsuccess = () => res(g.result); g.onerror = () => rej(g.error); };
+    r.onsuccess = () => { const d = r.result; const g = d.transaction('blobs').objectStore('blobs').get(id); g.onsuccess = () => { res(g.result); d.close(); }; g.onerror = () => { rej(g.error); d.close(); }; };
   });
 }
 

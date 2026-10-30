@@ -10,10 +10,12 @@ Plain static web app. No build step.
 | `site/index.html` | Screens (markup) |
 | `site/css/app.css` | All styles |
 | `site/js/app.js` | App logic |
-| `site/js/runtime.js` | Data, photos, AI and downloads layer (`window.claude.use(...)`). Today: IndexedDB on the device. Next: Supabase. |
+| `site/js/runtime.js` | Data, photos, AI and downloads layer (`window.claude.use(...)`). IndexedDB on the device + sync to Supabase, email/password sign-in. |
 | `site/sw.js` | Service worker (offline, photo links). **Bump `VERSION` on every release.** |
 | `worker/lina-ai.js` | Cloudflare Worker that calls the Claude API (key stays in Cloudflare secrets) |
-| `docs/schema.md` | Supabase tables and relations |
+| `docs/schema.md` | Supabase tables, relations and how sync works |
+| `supabase/migrations/` | Schema SQL (already applied; record only) |
+| `tests/sync.test.js` | Two-device sync test in headless Chromium against a mock Supabase: `node tests/sync.test.js` |
 
 ## Run locally
 ```

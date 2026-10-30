@@ -188,8 +188,9 @@
     <div class="two"><div class="field"><label for="hStart">August start weight (kg)</label><input id="hStart" inputmode="decimal"></div>
     <div class="field"><label for="hLow">August lowest weight (kg)</label><input id="hLow" inputmode="decimal"></div></div></div></details>
     <button class="primary" id="saveSettings">Save changes</button>
-    <details class="sgroup"><summary><span>Your data<small>Backup and restore</small></span></summary><div class="sgbody">
-    <p class="hint">A backup is one file with all your entries and settings. Photos stay inside the app.</p>
+    <details class="sgroup"><summary><span>Your data<small>Account, sync and backup</small></span></summary><div class="sgbody">
+    <div id="syncRow"></div>
+    <p class="hint">A backup is one file with all your entries, settings and photos. Keep one somewhere safe now and then.</p>
     <div class="datarow"><button class="btn2" data-backup>Download backup</button><label class="btn2" for="restoreFile" style="text-align:center;cursor:pointer">Restore backup</label></div>
     <input type="file" id="restoreFile" accept=".json,application/json" hidden>
     <div id="restoreBox"></div></div></details>

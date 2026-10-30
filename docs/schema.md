@@ -52,10 +52,20 @@ SQL: `supabase/migrations/20261030090000_life_book_schema.sql` (applied).
 - Debt delete: app soft-deletes, so undo keeps working and payments stay linked. FK only acts on a hard purge (set null).
 - `settings.incomes[]` = {id, name, usd, feePct, flat, count}. `incomeLog[]` = {id, src, name, cur, amt, rate, nis, date, forM?, cycle}.
 
-## Rules for runtime.js (step 3)
-- Numbers: send `''`/undefined as null; on read, drop null keys (app already treats missing as blank).
-- Push parents first: debts, people, products → then entries and the rest (FKs).
-- Always send `updated_at` = edit time on the device.
+## How sync works (runtime.js, built 30 Oct)
+| Part | Detail |
+|---|---|
+| Local first | The app reads and writes IndexedDB `lina-life` (docs, blobs) as before: instant and offline |
+| Outbox | Every save/delete adds `d:<collection>/<id>` or `b:<photo id>` to IndexedDB `lina-sync`.outbox |
+| Push | Photos first, then records parents-first (settings, debts, people, products, then the rest). Bulk upsert 200 at a time. A bad record is parked (meta `parked`), the rest keep going |
+| Newest wins | The database ignores older saves; the app then re-downloads the newer version |
+| Delete | Soft (`deleted_at`). Undo re-saves the record and it comes back everywhere |
+| Pull | Per table, `synced_at` cursor (10 s overlap), pages of 500 keyed on (synced_at, id). Skips records with a local change waiting |
+| Photos | Uploaded to `photos/{user}/{id}`; other devices download missing ones after a pull |
+| When | On sign-in, 1.5 s after any change, when the app comes back to the screen, when back online, every 60 s while open, and "Sync now" |
+| First sign-in on a device | Account empty → uploads everything on the device (the phone's existing data). Account has data → device takes the account's data (old local copy kept in meta `presync`) |
+| Mapping | App field ⇄ column by type; anything that doesn't fit (e.g. `''` in a number) is kept as-is in `extra`. Tested lossless on sample data of all 15 collections |
+| Sign out | Settings → Your data. Warns if changes haven't synced, then clears this device |
 
 ## Free plan limits (checked 30 Oct)
 | Limit | Value | Risk for Life Book |
