@@ -1,0 +1,17 @@
+{
+ "name": "Lina's Life Book",
+ "short_name": "Life Book",
+ "id": "/",
+ "start_url": "/",
+ "scope": "/",
+ "display": "standalone",
+ "orientation": "portrait",
+ "background_color": "#170D24",
+ "theme_color": "#3A1F5C",
+ "description": "Money, health, kitchen, closet and people, in one cozy place.",
+ "icons": [
+  {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+  {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+  {"src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+ ]
+}
